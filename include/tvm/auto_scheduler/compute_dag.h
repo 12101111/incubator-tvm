@@ -53,11 +53,11 @@ class AccessAnalyzerNode : public Object {
   using OperationMap = std::unordered_map<te::Operation, T, ObjectPtrHash, ObjectPtrEqual>;
 
   /*! \brief Map an operation to all operations it reads from.
-   * For each operation pair, use a two-dimentional array for multiple multi-dimentional accesses
+   * For each operation pair, use a two-dimensional array for multiple multi-dimensional accesses
    * The inner vector represents the indices of multi-dimensional access.*/
   OperationMap<OperationMap<std::vector<std::vector<PrimExpr>>>> read_from;
   /*! \brief Map an operation to all operations it is read by.
-   * For each operation pair, use a two-dimentional array for multiple multi-dimentional accesses
+   * For each operation pair, use a two-dimensional array for multiple multi-dimensional accesses
    * The inner vector represents the indices of multi-dimensional access.*/
   OperationMap<OperationMap<std::vector<std::vector<PrimExpr>>>> read_by;
   /*! \brief Store the number of common outer iterators for operation pairs that have
@@ -66,10 +66,10 @@ class AccessAnalyzerNode : public Object {
   /*! \brief Store whether the operation is an op with only simple access.
    *  (e.g., injective, broadcast and elementwise ops without reduction) */
   OperationMap<bool> is_simple_access;
-  /*! \brief Store whether the operation is strictly-inlineable
-   * (e.g., injective, broadcast and elementwise without reduction, branch or expenive operations)
+  /*! \brief Store whether the operation is strictly inlineable
+   * (e.g., injective, broadcast and elementwise without reduction, branch or expensive operations)
    */
-  OperationMap<bool> is_strict_inlineable;
+  OperationMap<bool> is_strictly_inlineable;
   /*! \brief Store whether the operation needs multi-level tiling
    * (e.g., computation-intensive ops with data reuse opportunity like matmul, conv2d) */
   OperationMap<bool> needs_multi_level_tiling;
@@ -98,11 +98,11 @@ class AccessAnalyzer : public ObjectRef {
   TVM_DLL bool IsSimpleAccess(const te::Operation& op) const;
 
   /*!
-   * \brief Return whether this operation is strictly inlinable
-   * (e.g., injective, broadcast and elementwise without reduction, branch or expenive operations)
+   * \brief Return whether this operation is strictly inlineable
+   * (e.g., injective, broadcast and elementwise without reduction, branch or expensive operations)
    * \param op The operation
    */
-  TVM_DLL bool IsStrictInlineable(const te::Operation& op) const;
+  TVM_DLL bool IsStrictlyInlineable(const te::Operation& op) const;
 
   /*!
    * \brief Return whether this operation needs multi-level tiling
@@ -187,6 +187,7 @@ class ComputeDAGNode : public Object {
     v->Visit("ops", &ops);
     v->Visit("flop_ct", &flop_ct);
     v->Visit("init_state", &init_state);
+    v->Visit("access_analyzer", &access_analyzer);
   }
 
   static constexpr const char* _type_key = "auto_scheduler.ComputeDAG";
@@ -205,18 +206,28 @@ class ComputeDAG : public ObjectRef {
   TVM_DLL explicit ComputeDAG(Array<te::Tensor> tensors);
 
   /*!
+   * \brief Rewrite the layout of placeholder specified by attr `layout_free_placeholders`
+   * according to the loop nest derived with `transform_steps`.
+   * \param transform_steps Transform steps of a state.
+   */
+  void RewriteLayout(const Array<Step>& transform_steps);
+
+  /*!
    * \brief Apply the history transform steps to get a TVM schedule.
    * \param transform_steps Transform steps of a state.
    * \param stages The list of stages after applying the steps.
    * Pass a valid pointer if this information needs to be used outside this function.
    * \param stage_to_axes The map that stores all axes for one stage.
    * Pass a valid pointer if this information needs to be used outside this function.
+   * \param layout_rewrite Rewrite the layout of placeholders specified by
+   * attr `layout_free_placeholders`
    * \return A `te.schedule` and the an Array of `te.Tensor` to be used in `tvm.lower`
    * or `tvm.build`.
    */
-  std::pair<te::Schedule, Array<te::Tensor>> ApplySteps(
-      const Array<Step>& transform_steps, Array<te::Stage>* stages = nullptr,
-      StageToAxesMap* stage_to_axes = nullptr) const;
+  std::pair<te::Schedule, Array<te::Tensor>> ApplySteps(const Array<Step>& transform_steps,
+                                                        Array<te::Stage>* stages = nullptr,
+                                                        StageToAxesMap* stage_to_axes = nullptr,
+                                                        bool layout_rewrite = false) const;
 
   /*!
    * \brief Print transform steps as equivalent python schedule API.
@@ -238,15 +249,30 @@ class ComputeDAG : public ObjectRef {
   State InferBound(const State& state) const;
 
   /*!
+   * \brief Fill the correct bound information for the given states by calling ir_pass::InferBound.
+   * The states can lose complete bound information after some transform steps (e.g., compute_at).
+   * We can call this function to infer and fill all the bound information.
+   * This function calls TVM InferBound pass internally to get the bound.
+   * The returned state of this function is guaranteed to have complete bound information.
+   * \param states The input states.
+   * \return The States with complete bound information.
+   * \note The returned array will contains empty State, if there're infer bound failure on some
+   * states.
+   */
+  Array<State> InferBound(const Array<State>& states) const;
+
+  /*!
    * \brief Since some steps may change the ComputeDAG (e.g. CacheRead/CacheWrite), the initial
    * ComputeDAG may not be up-to-date. This function replays the given transform steps from the
    * initial state and returns an up-to-date ComputeDAG.
-   * \param steps The steps to be replaied. Usually we'll filter out the unused steps to speed up
+   * \param steps The steps to be replayed. Usually we'll filter out the unused steps to speed up
    * the replay process, since we only intend to get a ComputeDAG with the up-to-date op stage
    * structure.
    * \return The up-to-date ComputeDAG.
    */
   ComputeDAG ReplayAndGetDAG(const Array<Step>& steps) const;
+
+  static constexpr const char* layout_free_placeholders_key = "layout_free_placeholders";
 
   TVM_DEFINE_OBJECT_REF_METHODS(ComputeDAG, ObjectRef, ComputeDAGNode);
   TVM_DEFINE_OBJECT_REF_COW_METHOD(ComputeDAGNode);

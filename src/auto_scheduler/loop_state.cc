@@ -42,13 +42,16 @@ TVM_REGISTER_NODE_TYPE(StateNode);
 TVM_REGISTER_NODE_TYPE(IteratorNode);
 
 /********** Iterator **********/
-Iterator::Iterator(String name, Range range, IteratorKind iter_kind,
-                   IteratorAnnotation annotation) {
+Iterator::Iterator(String name, Range range, IteratorKind iter_kind, IteratorAnnotation annotation,
+                   const std::vector<Iterator>* orig_iters) {
   auto node = make_object<IteratorNode>();
   node->name = std::move(name);
   node->range = std::move(range);
   node->iter_kind = iter_kind;
   node->annotation = annotation;
+  if (orig_iters != nullptr) {
+    node->orig_iters = *orig_iters;
+  }
   data_ = std::move(node);
 }
 
@@ -113,6 +116,7 @@ void AttachMap::UpdateIters(const std::vector<IterKey>& original_iters,
                             const std::vector<IterKey>& new_iters) {
   CHECK_EQ(original_iters.size(), new_iters.size());
   AttachMapNode* pnode = CopyOnWrite();
+  std::unordered_map<IterKey, std::vector<StageKey>> new_iter_to_attached_stages;
   for (size_t i = 0; i < original_iters.size(); ++i) {
     auto entry = pnode->iter_to_attached_stages.find(original_iters[i]);
     // We get <IterKey, std::vector<StageKey>> from this map
@@ -130,7 +134,12 @@ void AttachMap::UpdateIters(const std::vector<IterKey>& original_iters,
     // iterator to it
     std::vector<int> attached_stages = std::move(entry->second);
     pnode->iter_to_attached_stages.erase(entry);
-    pnode->iter_to_attached_stages[new_iters[i]] = std::move(attached_stages);
+    new_iter_to_attached_stages[new_iters[i]] = std::move(attached_stages);
+  }
+
+  // Update new entries
+  for (auto& it : new_iter_to_attached_stages) {
+    pnode->iter_to_attached_stages[it.first] = std::move(it.second);
   }
 }
 
@@ -139,7 +148,7 @@ void AttachMap::DeleteStageEntry(AttachMapNode* pnode, int stage_id) {
   // We get <StageKey, IterKey> from this map
   if (old_entry != pnode->stage_to_attach_iter.end()) {
     // Delete the stage in `iter_to_attached_stages`, if the corresponding iterator does not have
-    // any attatched stage, delete this iterm too
+    // any attached stage, delete this iterm too
     auto entry2 = pnode->iter_to_attached_stages.find(old_entry->second);
     // We get <IterKey, std::vector<StageKey>> from this map
     FindAndDeleteItem(&entry2->second, stage_id);

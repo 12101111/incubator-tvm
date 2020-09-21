@@ -48,40 +48,7 @@ def matmul(lhs, rhs, transa=False, transb=False, **kwargs):
             "tvm.contrib.cblas.matmul", ins[0], ins[1], outs[0], transa, transb
         ),
         name="C",
-        **kwargs
-    )
-
-
-def matmul_u8s8s32(lhs, rhs, transa=False, transb=False, **kwargs):
-    """Create an extern op that compute matrix mult of A and rhs with CrhsLAS
-    This function serves as an example on how to call external libraries.
-
-    Parameters
-    ----------
-    lhs: Tensor
-        The left matrix operand
-    rhs: Tensor
-        The right matrix operand
-    transa: bool
-        Whether transpose lhs
-    transb: bool
-        Whether transpose rhs
-
-    Returns
-    -------
-    C: Tensor
-        The result tensor.
-    """
-    n = lhs.shape[1] if transa else lhs.shape[0]
-    m = rhs.shape[0] if transb else rhs.shape[1]
-    return te.extern(
-        (n, m),
-        [lhs, rhs],
-        lambda ins, outs: tvm.tir.call_packed(
-            "tvm.contrib.cblas.matmul_u8s8s32", ins[0], ins[1], outs[0], transa, transb
-        ),
-        name="C",
-        **kwargs
+        **kwargs,
     )
 
 
@@ -122,5 +89,5 @@ def batch_matmul(lhs, rhs, transa=False, transb=False, iterative=False, **kwargs
             transb,
         ),
         name="C",
-        **kwargs
+        **kwargs,
     )
