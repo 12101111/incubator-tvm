@@ -24,7 +24,7 @@ build = "build.rs"
 edition = "2018"
 
 [dependencies]
-ndarray = "0.12"
+ndarray = "0.13"
 tvm = { path = "../../" }
 image = "0.20"
 csv = "1.1"

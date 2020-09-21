@@ -49,8 +49,7 @@
 
 use std::convert::TryInto;
 use std::ffi::c_void;
-use std::{convert::TryFrom, mem, os::raw::c_int, ptr, slice, str::FromStr};
-
+use std::{convert::TryFrom, mem, os::raw::c_int, ptr, slice, str::FromStr, iter::FromIterator};
 use crate::errors::NDArrayError;
 
 use tvm_sys::ffi::DLTensor;
