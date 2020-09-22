@@ -26,6 +26,7 @@ import tvm
 from tvm import te
 from tvm.contrib import graph_runtime
 from tvm.contrib.download import download_testdata
+
 download_testdata.__test__ = False
 from tvm.relay.testing.darknet import LAYERTYPE
 from tvm.relay.testing.darknet import __darknetffi__
@@ -37,11 +38,8 @@ DARKNET_LIB = 'libdarknet3.0.so'
 DARKNETLIB_URL = REPO_URL + 'lib/' + DARKNET_LIB + '?raw=true'
 LIB = __darknetffi__.dlopen(download_testdata(DARKNETLIB_URL, DARKNET_LIB, module='darknet'))
 
-DARKNET_TEST_IMAGE_NAME = 'dog.jpg'
-DARKNET_TEST_IMAGE_URL = REPO_URL + 'data/' + DARKNET_TEST_IMAGE_NAME +'?raw=true'
-DARKNET_TEST_IMAGE_PATH = download_testdata(DARKNET_TEST_IMAGE_URL, DARKNET_TEST_IMAGE_NAME, module='data')
 
-def _read_memory_buffer(shape, data, dtype='float32'):
+def _read_memory_buffer(shape, data, dtype="float32"):
     length = 1
     for x in shape:
         length *= x
@@ -55,21 +53,12 @@ def _get_tvm_output(net, data, build_dtype='float32', states=None):
     '''Compute TVM output'''
     dtype = 'float32'
     mod, params = relay.frontend.from_darknet(net, data.shape, dtype)
-    target = 'llvm'
-    shape_dict = {'data': data.shape}
-    graph, library, params = relay.build(mod,
-                                         target,
-                                         params=params)
-
+    target = "llvm"
+    shape_dict = {"data": data.shape}
+    lib = relay.build(mod, target, params=params)
     # Execute on TVM
     ctx = tvm.cpu(0)
-    m = graph_runtime.create(graph, library, ctx)
-    # set inputs
-    m.set_input('data', tvm.nd.array(data.astype(dtype)))
-    if states:
-        for name in states.keys():
-            m.set_input(name, tvm.nd.array(states[name].astype(dtype)))
-    m.set_input(**params)
+    m = graph_runtime.GraphModule(lib["default"](ctx))
     m.run()
     # get outputs
     tvm_out = []
@@ -93,38 +82,43 @@ def verify_darknet_frontend(net, build_dtype='float32'):
         for i in range(net.n):
             layer = net.layers[i]
             if layer.type == LAYERTYPE.REGION:
-                attributes = np.array([layer.n, layer.out_c, layer.out_h,
-                                       layer.out_w, layer.classes,
-                                       layer.coords, layer.background],
-                                      dtype=np.int32)
+                attributes = np.array(
+                    [
+                        layer.n,
+                        layer.out_c,
+                        layer.out_h,
+                        layer.out_w,
+                        layer.classes,
+                        layer.coords,
+                        layer.background,
+                    ],
+                    dtype=np.int32,
+                )
                 out.insert(0, attributes)
-                out.insert(0, _read_memory_buffer((layer.n*2, ), layer.biases))
-                layer_outshape = (layer.batch, layer.out_c,
-                                  layer.out_h, layer.out_w)
+                out.insert(0, _read_memory_buffer((layer.n * 2,), layer.biases))
+                layer_outshape = (layer.batch, layer.out_c, layer.out_h, layer.out_w)
                 out.insert(0, _read_memory_buffer(layer_outshape, layer.output))
             elif layer.type == LAYERTYPE.YOLO:
-                attributes = np.array([layer.n, layer.out_c, layer.out_h,
-                                       layer.out_w, layer.classes,
-                                       layer.total],
-                                      dtype=np.int32)
+                attributes = np.array(
+                    [layer.n, layer.out_c, layer.out_h, layer.out_w, layer.classes, layer.total],
+                    dtype=np.int32,
+                )
                 out.insert(0, attributes)
-                out.insert(0, _read_memory_buffer((layer.total*2, ), layer.biases))
-                out.insert(0, _read_memory_buffer((layer.n, ), layer.mask, dtype='int32'))
-                layer_outshape = (layer.batch, layer.out_c,
-                                  layer.out_h, layer.out_w)
+                out.insert(0, _read_memory_buffer((layer.total * 2,), layer.biases))
+                out.insert(0, _read_memory_buffer((layer.n,), layer.mask, dtype="int32"))
+                layer_outshape = (layer.batch, layer.out_c, layer.out_h, layer.out_w)
                 out.insert(0, _read_memory_buffer(layer_outshape, layer.output))
-            elif i == net.n-1:
+            elif i == net.n - 1:
                 if layer.type == LAYERTYPE.CONNECTED:
                     darknet_outshape = (layer.batch, layer.out_c)
                 elif layer.type in [LAYERTYPE.SOFTMAX]:
                     darknet_outshape = (layer.batch, layer.outputs)
                 else:
-                    darknet_outshape = (layer.batch, layer.out_c,
-                                        layer.out_h, layer.out_w)
+                    darknet_outshape = (layer.batch, layer.out_c, layer.out_h, layer.out_w)
                 out.insert(0, _read_memory_buffer(darknet_outshape, layer.output))
         return out
 
-    dtype = 'float32'
+    dtype = "float32"
 
     img = LIB.letterbox_image(LIB.load_image_color(DARKNET_TEST_IMAGE_PATH.encode('utf-8'), 0, 0), net.w, net.h)
     darknet_outs = get_darknet_output(net, img)
@@ -141,39 +135,6 @@ def verify_darknet_frontend(net, build_dtype='float32'):
     for tvm_out, darknet_out in (zip(tvm_outs, darknet_outs)):
         tvm.testing.assert_allclose(darknet_out, tvm_out, rtol=1e-3, atol=1e-3)
 
-
-def test_forward_convolutional():
-    '''test convolutional layer'''
-    net = LIB.make_network_custom(1)
-    batch = 1
-    steps = 1
-    h = 224
-    w = 224
-    c = 3
-    n = 32
-    groups = 1
-    size = 3
-    stride_x =2
-    stride_y = 2
-    dilation = 1
-    padding  = 0
-    activation = 1
-    batch_normalize  = 0
-    binary = 0
-    xnor = 0
-    adam = 0
-    use_bin_output = 0
-    index = 0
-    antialiasing = 0
-    share_layer = __darknetffi__.NULL
-    assisted_excitation = 0
-    deform = 0
-    train = 0
-
-    layer = LIB.make_convolutional_layer(batch, steps, h, w, c, n, groups, size, stride_x, stride_y,
-                                         dilation, padding, activation, batch_normalize, binary,
-                                         xnor, adam, use_bin_output, index, antialiasing, share_layer,
-                                         assisted_excitation, deform, train)
     net.layers[0] = layer
     net.w = net.h = 224
     LIB.resize_network(net, 224, 224)
@@ -248,7 +209,6 @@ def test_forward_maxpooling():
 
 
 def test_forward_avgpooling():
-    '''test avgerage pooling layer'''
     net = LIB.make_network_custom(1)
     batch = 1
     h = 224
@@ -256,7 +216,6 @@ def test_forward_avgpooling():
     c = 3
     layer = LIB.make_avgpool_layer(batch, h, w, c)
     net.layers[0] = layer
-    net.w = net.h = 224
     LIB.resize_network(net, 224, 224)
     verify_darknet_frontend(net)
     LIB.free_network(net)
@@ -303,6 +262,7 @@ def test_forward_conv_batch_norm():
     LIB.resize_network(net, 224, 224)
     verify_darknet_frontend(net)
     LIB.free_network(net)
+
 
 
 def test_forward_yolo_op():
@@ -358,6 +318,7 @@ def test_forward_upsample():
     LIB.resize_network(net, 19, 19)
     verify_darknet_frontend(net)
     LIB.free_network(net)
+
 
 
 def test_forward_elu():
