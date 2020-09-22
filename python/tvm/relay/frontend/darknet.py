@@ -300,19 +300,20 @@ class ACTIVATION(object):
     RAMP = 5
     TANH = 6
     PLSE = 7
-    LEAKY = 8
-    ELU = 9
-    LOGGY = 10
-    STAIR = 11
-    HARDTAN = 12
-    LHTAN = 13
-    SELU = 14
-    GELU = 15
-    SWISH = 16
-    MISH = 17
-    NORM_CHAN = 18
-    NORM_CHAN_SOFTMAX = 19
-    NORM_CHAN_SOFTMAX_MAXVAL = 20
+    REVLEAKY = 8
+    LEAKY = 9
+    ELU = 10
+    LOGGY = 11
+    STAIR = 12
+    HARDTAN = 13
+    LHTAN = 14
+    SELU = 15
+    GELU = 16
+    SWISH = 17
+    MISH = 18
+    NORM_CHAN = 19
+    NORM_CHAN_SOFTMAX = 20
+    NORM_CHAN_SOFTMAX_MAXVAL = 21
 
 
 def _darknet_activations(inputs, params, attrs):
@@ -365,7 +366,7 @@ def _darknet_activations(inputs, params, attrs):
     elif ACTIVATION.MISH == act:
         data = _mish(data)
     else:
-        _darknet_not_support('act: ' + act)
+        _darknet_not_support('act: ' + str(act))
     return data
 
 
